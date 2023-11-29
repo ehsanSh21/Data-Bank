@@ -13,3 +13,16 @@ More information about this case study: https://8weeksqlchallenge.com/case-study
 
 
 ### Entity Relationship Diagram: 
+
+![alt text](https://github.com/ehsanSh21/Data-Bank/blob/main/case-study-4-erd.png)
+
+
+### Case Study Questions
+
+You can use the link of DB Fiddle below to easily access this datasets and use my queries!
+
+<code class="language-plaintext highlighter-rouge">DB Fiddle link: </code> https://www.db-fiddle.com/f/2GtQz4wZtuNNu7zXH5HtV4/3
+
+
+
+
