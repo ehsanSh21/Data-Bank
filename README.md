@@ -153,6 +153,107 @@ GROUP BY sub3.region_id
 | 5         | 15     | 24                | 28                     |
 
 
+##### For each month - how many Data Bank customers make more than 1 deposit and either 1 purchase or 1 withdrawal in a single month?
+
+```sql
+SELECT
+sub.transaction_month,sub.transaction_year,COUNT(*)
+FROM
+(
+SELECT
+   EXTRACT(MONTH FROM txn_date) AS transaction_month,
+   EXTRACT(YEAR FROM txn_date) AS transaction_year,
+customer_id,
+COUNT(*) as total_txn,
+sum(case when txn_type= 'deposit' then 1 else 0 end)as depo_count,
+sum(case when txn_type= 'withdrawal' then 1 else 0 end)as with_count,
+sum(case when txn_type= 'purchase' then 1 else 0 end)as purch_count
+FROM
+data_bank.customer_transactions
+GROUP BY customer_id, EXTRACT(MONTH FROM txn_date),
+   EXTRACT(YEAR FROM txn_date)
+ORDER BY EXTRACT(MONTH FROM txn_date) asc ,total_txn desc) as sub
+WHERE sub.depo_count > 1
+AND ( sub.with_count > 0 OR sub.purch_count > 0 )
+GROUP BY sub.transaction_month,sub.transaction_year
+ORDER BY sub.transaction_month
+;
+```
+
+##### output:
+
+| transaction_month | transaction_year | count |
+| ----------------- | ---------------- | ----- |
+| 1                 | 2020             | 168   |
+| 2                 | 2020             | 181   |
+| 3                 | 2020             | 192   |
+| 4                 | 2020             | 70    |
+
+
+##### Data Allocation Challenge: running customer balance column that includes the impact each transaction
+
+```sql
+WITH trans_cte AS (
+select
+*,
+  ROW_NUMBER() OVER (
+       PARTITION BY customer_id
+       ORDER BY txn_date
+    ) rn
+FROM
+data_bank.customer_transactions
+),
+
+sum_sub_running AS(
+SELECT
+sub.customer_id,sub.txn_date,sub.rn,sub.txn_type,sub.txn_amount,sub.a_type_add,
+sum(case WHEN sub.b_type_add = 1 then sub.b_amount ELSE 0 end) as
+sum_adds,
+sum(case WHEN sub.b_type_add = 0 then sub.b_amount ELSE 0 end) as
+sub_adds
+FROM
+(
+SELECT
+a.*,
+b.txn_type as b_type,
+(case when b.txn_amount is not NULL then b.txn_amount else 0 end) as
+b_amount,
+(case when a.txn_type = 'deposit' then 1 ELSE 0 END ) as a_type_add,
+(case when b.txn_type = 'deposit' then 1 ELSE 0 END ) as b_type_add
+FROM
+trans_cte a
+left JOIN trans_cte b
+ON a.customer_id = b.customer_id
+AND a.rn > b.rn) as sub
+
+GROUP BY
+sub.customer_id,sub.txn_date,sub.rn,sub.txn_type,sub.txn_amount,sub.a_type_add
+ORDER BY sub.customer_id,sub.rn)
+
+SELECT
+*,
+(CASE
+     WHEN a_type_add = 1 THEN sum_adds - sub_adds + txn_amount
+     ELSE sum_adds - sub_adds - txn_amount
+   END) AS running_customer_balance
+FROM
+sum_sub_running
+ORDER BY sum_sub_running,customer_id,sum_sub_running.txn_date
+;
+```
+
+##### sample output:
+
+| customer_id | txn_date                 | rn  | txn_type | txn_amount | a_type_add | sum_adds | sub_adds | running_customer_balance |
+| ----------- | ------------------------ | --- | -------- | ---------- | ---------- | -------- | -------- | ------------------------ |
+| 1           | 2020-01-02T00:00:00.000Z | 1   | deposit  | 312        | 1          | 0        | 0        | 312                      |
+| 1           | 2020-03-05T00:00:00.000Z | 2   | purchase | 612        | 0          | 312      | 0        | -300                     |
+| 1           | 2020-03-17T00:00:00.000Z | 3   | deposit  | 324        | 1          | 312      | 612      | 24                       |
+| 1           | 2020-03-19T00:00:00.000Z | 4   | purchase | 664        | 0          | 636      | 612      | -640                     |
+| 2           | 2020-01-03T00:00:00.000Z | 1   | deposit  | 549        | 1          | 0        | 0        | 549                      |
+| 2           | 2020-03-24T00:00:00.000Z | 2   | deposit  | 61         | 1          | 549      | 0        | 610                      |
+| 3           | 2020-01-27T00:00:00.000Z | 1   | deposit  | 144        | 1          | 0        | 0        | 144                      |
+
 
 
 
